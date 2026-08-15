@@ -49,6 +49,12 @@ public static class AtlasSceneProbe
             report.AppendLine(
                 $"{indent}  - {component.GetType().Name}"
             );
+
+            AppendSerializedProperties(
+                report,
+                component,
+                depth + 2
+            );
         }
 
         for (int i = 0; i < transform.childCount; i++)
@@ -58,6 +64,79 @@ public static class AtlasSceneProbe
                 transform.GetChild(i),
                 depth + 1
             );
+        }
+    }
+
+    private static void AppendSerializedProperties(
+        StringBuilder report,
+        Component component,
+        int depth)
+    {
+        SerializedObject serializedObject = new(component);
+        SerializedProperty property =
+            serializedObject.GetIterator();
+
+        string indent = new(' ', depth * 2);
+
+        bool enterChildren = true;
+
+        while (property.NextVisible(enterChildren))
+        {
+            enterChildren = false;
+
+            // Unity exposes the script reference itself as m_Script.
+            // It isn't useful project state for our report.
+            if (property.propertyPath == "m_Script")
+            {
+                continue;
+            }
+
+            string value = GetPropertyValue(property);
+
+            report.AppendLine(
+                $"{indent}{property.displayName}: {value}"
+            );
+        }
+    }
+
+    private static string GetPropertyValue(
+        SerializedProperty property)
+    {
+        switch (property.propertyType)
+        {
+            case SerializedPropertyType.Integer:
+                return property.intValue.ToString();
+
+            case SerializedPropertyType.Boolean:
+                return property.boolValue.ToString();
+
+            case SerializedPropertyType.Float:
+                return property.floatValue.ToString("0.###");
+
+            case SerializedPropertyType.String:
+                return $"\"{property.stringValue}\"";
+
+            case SerializedPropertyType.Enum:
+                return property.enumDisplayNames[
+                    property.enumValueIndex
+                ];
+
+            case SerializedPropertyType.ObjectReference:
+                return property.objectReferenceValue != null
+                    ? property.objectReferenceValue.name
+                    : "NULL";
+
+            case SerializedPropertyType.Vector2:
+                return property.vector2Value.ToString();
+
+            case SerializedPropertyType.Vector3:
+                return property.vector3Value.ToString();
+
+            case SerializedPropertyType.Color:
+                return property.colorValue.ToString();
+
+            default:
+                return $"<{property.propertyType}>";
         }
     }
 }
