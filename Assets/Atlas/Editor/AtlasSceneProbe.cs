@@ -1,28 +1,30 @@
 using System.Text;
-using System.IO;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 public static class AtlasSceneProbe
 {
     [MenuItem("Atlas/Inspect Active Scene")]
     public static void InspectActiveScene()
     {
-        Scene scene = SceneManager.GetActiveScene();
+        AtlasSceneInfo scene =
+            AtlasSceneInspector.InspectActiveScene();
 
         StringBuilder report = new();
 
         report.AppendLine("=== ATLAS SCENE REPORT ===");
-        report.AppendLine($"Scene: {scene.name}");
-        report.AppendLine($"Path: {scene.path}");
+        report.AppendLine($"Scene: {scene.Name}");
+        report.AppendLine($"Path: {scene.Path}");
         report.AppendLine();
 
-        GameObject[] rootObjects = scene.GetRootGameObjects();
-
-        foreach (GameObject rootObject in rootObjects)
+        foreach (AtlasGameObjectInfo rootObject
+                 in scene.RootObjects)
         {
-            AppendGameObject(report, rootObject.transform, 0);
+            AppendGameObject(
+                report,
+                rootObject,
+                0
+            );
         }
 
         Debug.Log(report.ToString());
@@ -30,194 +32,78 @@ public static class AtlasSceneProbe
 
     private static void AppendGameObject(
         StringBuilder report,
-        Transform transform,
+        AtlasGameObjectInfo gameObject,
         int depth)
     {
-        string indent = new(' ', depth * 2);
+        string indent =
+            new(' ', depth * 2);
 
-        report.AppendLine($"{indent}{transform.name}");
+        report.AppendLine(
+            $"{indent}{gameObject.Name}"
+        );
 
-        Component[] components = transform.GetComponents<Component>();
-
-        foreach (Component component in components)
+        foreach (AtlasComponentInfo component
+                 in gameObject.Components)
         {
-            if (component == null)
+            report.AppendLine(
+                $"{indent}  - {component.TypeName}"
+            );
+
+            if (component.Script != null)
             {
-                report.AppendLine($"{indent}  - Missing Script");
-                continue;
+                report.AppendLine(
+                    $"{indent}    Script: {component.Script.Path}"
+                );
+
+                if (component.Script.IsProjectSource &&
+                    !string.IsNullOrWhiteSpace(
+                        component.Script.Source))
+                {
+                    report.AppendLine(
+                        $"{indent}    Source:"
+                    );
+
+                    report.AppendLine(
+                        $"{indent}    ---"
+                    );
+
+                    foreach (string line in
+                             component.Script.Source.Split('\n'))
+                    {
+                        report.AppendLine(
+                            $"{indent}    {line.TrimEnd('\r')}"
+                        );
+                    }
+
+                    report.AppendLine(
+                        $"{indent}    ---"
+                    );
+                }
+                else if (!component.Script.IsProjectSource)
+                {
+                    report.AppendLine(
+                        $"{indent}    Source: <Package Source Skipped>"
+                    );
+                }
             }
 
-            report.AppendLine(
-                $"{indent}  - {component.GetType().Name}"
-            );
-
-            AppendScriptInfo(
-                report,
-                component,
-                depth + 2
-            );
-
-            AppendSerializedProperties(
-                report,
-                component,
-                depth + 2
-            );
+            foreach (AtlasPropertyInfo property
+                     in component.Properties)
+            {
+                report.AppendLine(
+                    $"{indent}    {property.Name}: {property.Value}"
+                );
+            }
         }
 
-        for (int i = 0; i < transform.childCount; i++)
+        foreach (AtlasGameObjectInfo child
+                 in gameObject.Children)
         {
             AppendGameObject(
                 report,
-                transform.GetChild(i),
+                child,
                 depth + 1
             );
-        }
-    }
-
-    private static void AppendSerializedProperties(
-        StringBuilder report,
-        Component component,
-        int depth)
-    {
-        SerializedObject serializedObject = new(component);
-        SerializedProperty property =
-            serializedObject.GetIterator();
-
-        string indent = new(' ', depth * 2);
-
-        bool enterChildren = true;
-
-        while (property.NextVisible(enterChildren))
-        {
-            enterChildren = false;
-
-            // Unity exposes the script reference itself as m_Script.
-            // It isn't useful project state for our report.
-            if (property.propertyPath == "m_Script")
-            {
-                continue;
-            }
-
-            string value = GetPropertyValue(property);
-
-            report.AppendLine(
-                $"{indent}{property.displayName}: {value}"
-            );
-        }
-    }
-
-    private static void AppendScriptInfo(
-    StringBuilder report,
-    Component component,
-    int depth)
-    {
-        if (component is not MonoBehaviour monoBehaviour)
-        {
-            return;
-        }
-
-        MonoScript monoScript =
-            MonoScript.FromMonoBehaviour(monoBehaviour);
-
-        if (monoScript == null)
-        {
-            return;
-        }
-
-        string path = AssetDatabase.GetAssetPath(monoScript);
-        string indent = new(' ', depth * 2);
-
-        report.AppendLine($"{indent}Script: {path}");
-
-        /*
-         * For normal scene inspection, Atlas only reads source
-         * that belongs to the developer's project.
-         *
-         * Package source can be inspected later through a
-         * dedicated tool if needed.
-         */
-        if (!path.StartsWith("Assets/"))
-        {
-            report.AppendLine(
-                $"{indent}Source: <Package Source Skipped>"
-            );
-
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            report.AppendLine(
-                $"{indent}Source: <Unavailable>"
-            );
-
-            return;
-        }
-
-        string absolutePath = Path.GetFullPath(path);
-
-        if (!File.Exists(absolutePath))
-        {
-            report.AppendLine(
-                $"{indent}Source: <File Not Found>"
-            );
-
-            return;
-        }
-
-        string source = File.ReadAllText(absolutePath);
-
-        report.AppendLine($"{indent}Source:");
-        report.AppendLine($"{indent}---");
-
-        foreach (string line in source.Split('\n'))
-        {
-            report.AppendLine(
-                $"{indent}{line.TrimEnd('\r')}"
-            );
-        }
-
-        report.AppendLine($"{indent}---");
-    }
-
-    private static string GetPropertyValue(
-        SerializedProperty property)
-    {
-        switch (property.propertyType)
-        {
-            case SerializedPropertyType.Integer:
-                return property.intValue.ToString();
-
-            case SerializedPropertyType.Boolean:
-                return property.boolValue.ToString();
-
-            case SerializedPropertyType.Float:
-                return property.floatValue.ToString("0.###");
-
-            case SerializedPropertyType.String:
-                return $"\"{property.stringValue}\"";
-
-            case SerializedPropertyType.Enum:
-                return property.enumDisplayNames[
-                    property.enumValueIndex
-                ];
-
-            case SerializedPropertyType.ObjectReference:
-                return property.objectReferenceValue != null
-                    ? property.objectReferenceValue.name
-                    : "NULL";
-
-            case SerializedPropertyType.Vector2:
-                return property.vector2Value.ToString();
-
-            case SerializedPropertyType.Vector3:
-                return property.vector3Value.ToString();
-
-            case SerializedPropertyType.Color:
-                return property.colorValue.ToString();
-
-            default:
-                return $"<{property.propertyType}>";
         }
     }
 }
