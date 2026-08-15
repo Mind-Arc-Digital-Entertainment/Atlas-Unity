@@ -1,3 +1,4 @@
+[System.Serializable]
 public class AtlasScriptInfo
 {
     public string Path;

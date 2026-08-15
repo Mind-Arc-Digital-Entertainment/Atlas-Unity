@@ -1,3 +1,4 @@
+[System.Serializable]
 public class AtlasPropertyInfo
 {
     public string Name;

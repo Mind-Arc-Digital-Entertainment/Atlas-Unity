@@ -147,12 +147,229 @@ public static class AtlasLocalBridge
                 return;
             }
 
+            if (method == "GET" &&
+                path == "/atlas/scene/objects")
+            {
+                HandleListSceneObjects(stream);
+                return;
+            }
+
+            if (method == "GET" &&
+                path.StartsWith("/atlas/object?"))
+            {
+                HandleInspectGameObject(
+                    stream,
+                    path
+                );
+
+                return;
+            }
+
             WriteResponse(
                 stream,
                 404,
                 "{\"error\":\"Not found\"}"
             );
         }
+    }
+
+    private static void HandleListSceneObjects(
+    NetworkStream stream)
+    {
+        ManualResetEventSlim completed = new(false);
+
+        string json = null;
+        Exception error = null;
+
+        MainThreadActions.Enqueue(() =>
+        {
+            try
+            {
+                AtlasSceneObjectList response = new()
+                {
+                    Objects =
+                        AtlasSceneTools.ListSceneObjects()
+                };
+
+                json = JsonUtility.ToJson(
+                    response
+                );
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+            finally
+            {
+                completed.Set();
+            }
+        });
+
+        if (!completed.Wait(
+                TimeSpan.FromSeconds(5)))
+        {
+            WriteResponse(
+                stream,
+                503,
+                "{\"error\":\"Unity Editor did not respond in time\"}"
+            );
+
+            return;
+        }
+
+        if (error != null)
+        {
+            WriteResponse(
+                stream,
+                500,
+                "{\"error\":\"Unity inspection failed\"}"
+            );
+
+            return;
+        }
+
+        WriteResponse(
+            stream,
+            200,
+            json
+        );
+    }
+
+    private static void HandleInspectGameObject(
+    NetworkStream stream,
+    string requestPath)
+    {
+        string objectName =
+            GetQueryParameter(
+                requestPath,
+                "name"
+            );
+
+        if (string.IsNullOrWhiteSpace(
+                objectName))
+        {
+            WriteResponse(
+                stream,
+                400,
+                "{\"error\":\"Missing object name\"}"
+            );
+
+            return;
+        }
+
+        ManualResetEventSlim completed = new(false);
+
+        string json = null;
+        Exception error = null;
+
+        MainThreadActions.Enqueue(() =>
+        {
+            try
+            {
+                AtlasGameObjectInfo gameObject =
+                    AtlasSceneTools.InspectGameObject(
+                        objectName
+                    );
+
+                AtlasObjectResponse response = new()
+                {
+                    Found = gameObject != null,
+                    Object = gameObject
+                };
+
+                json = JsonUtility.ToJson(
+                    response
+                );
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+            finally
+            {
+                completed.Set();
+            }
+        });
+
+        if (!completed.Wait(
+                TimeSpan.FromSeconds(5)))
+        {
+            WriteResponse(
+                stream,
+                503,
+                "{\"error\":\"Unity Editor did not respond in time\"}"
+            );
+
+            return;
+        }
+
+        if (error != null)
+        {
+            WriteResponse(
+                stream,
+                500,
+                "{\"error\":\"Unity inspection failed\"}"
+            );
+
+            return;
+        }
+
+        WriteResponse(
+            stream,
+            200,
+            json
+        );
+    }
+
+    private static string GetQueryParameter(
+    string requestPath,
+    string key)
+    {
+        int queryIndex =
+            requestPath.IndexOf('?');
+
+        if (queryIndex < 0 ||
+            queryIndex >= requestPath.Length - 1)
+        {
+            return null;
+        }
+
+        string query =
+            requestPath.Substring(
+                queryIndex + 1
+            );
+
+        string[] parameters =
+            query.Split('&');
+
+        foreach (string parameter
+                 in parameters)
+        {
+            string[] pair =
+                parameter.Split(
+                    new[] { '=' },
+                    2
+                );
+
+            if (pair.Length != 2)
+            {
+                continue;
+            }
+
+            if (!string.Equals(
+                    pair[0],
+                    key,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return Uri.UnescapeDataString(
+                pair[1]
+            );
+        }
+
+        return null;
     }
 
     private static void HandleGetActiveScene(
