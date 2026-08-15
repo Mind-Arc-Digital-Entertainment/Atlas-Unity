@@ -141,7 +141,7 @@ public static class AtlasLocalBridge
             }
 
             if (method == "GET" &&
-                path == "/atlas/scene")
+    path == "/atlas/scene")
             {
                 HandleGetActiveScene(stream);
                 return;
@@ -162,20 +162,13 @@ public static class AtlasLocalBridge
             }
 
             if (method == "GET" &&
-                path.StartsWith("/atlas/object?"))
+                path.StartsWith("/atlas/project/search?"))
             {
-                HandleInspectGameObject(
+                HandleSearchProject(
                     stream,
                     path
                 );
 
-                return;
-            }
-
-            if (method == "GET" &&
-                path == "/atlas/scene/objects")
-            {
-                HandleListSceneObjects(stream);
                 return;
             }
 
@@ -494,6 +487,87 @@ public static class AtlasLocalBridge
         );
 
         stream.Flush();
+    }
+
+    private static void HandleSearchProject(
+    NetworkStream stream,
+    string requestPath)
+    {
+        string query =
+            GetQueryParameter(
+                requestPath,
+                "query"
+            );
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            WriteResponse(
+                stream,
+                400,
+                "{\"error\":\"Missing search query\"}"
+            );
+
+            return;
+        }
+
+        ManualResetEventSlim completed = new(false);
+
+        string json = null;
+        Exception error = null;
+
+        MainThreadActions.Enqueue(() =>
+        {
+            try
+            {
+                AtlasProjectSearchResult result =
+                    AtlasProjectTools.SearchProject(
+                        query
+                    );
+
+                json = JsonUtility.ToJson(
+                    result
+                );
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+            finally
+            {
+                completed.Set();
+            }
+        });
+
+        if (!completed.Wait(
+                TimeSpan.FromSeconds(5)))
+        {
+            WriteResponse(
+                stream,
+                503,
+                "{\"error\":\"Unity Editor did not respond in time\"}"
+            );
+
+            return;
+        }
+
+        if (error != null)
+        {
+            Debug.LogException(error);
+
+            WriteResponse(
+                stream,
+                500,
+                "{\"error\":\"Unity project search failed\"}"
+            );
+
+            return;
+        }
+
+        WriteResponse(
+            stream,
+            200,
+            json
+        );
     }
 
     private static void ProcessMainThreadActions()
