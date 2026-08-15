@@ -50,6 +50,12 @@ public static class AtlasSceneProbe
                 $"{indent}  - {component.GetType().Name}"
             );
 
+            AppendScriptPath(
+                report,
+                component,
+                depth + 2
+            );
+
             AppendSerializedProperties(
                 report,
                 component,
@@ -97,6 +103,30 @@ public static class AtlasSceneProbe
                 $"{indent}{property.displayName}: {value}"
             );
         }
+    }
+
+    private static void AppendScriptPath(
+    StringBuilder report,
+    Component component,
+    int depth)
+    {
+        if (component is not MonoBehaviour monoBehaviour)
+        {
+            return;
+        }
+
+        MonoScript monoScript =
+            MonoScript.FromMonoBehaviour(monoBehaviour);
+
+        if (monoScript == null)
+        {
+            return;
+        }
+
+        string path = AssetDatabase.GetAssetPath(monoScript);
+        string indent = new(' ', depth * 2);
+
+        report.AppendLine($"{indent}Script: {path}");
     }
 
     private static string GetPropertyValue(
