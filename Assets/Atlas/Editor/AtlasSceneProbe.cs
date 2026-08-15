@@ -1,4 +1,5 @@
 using System.Text;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -50,7 +51,7 @@ public static class AtlasSceneProbe
                 $"{indent}  - {component.GetType().Name}"
             );
 
-            AppendScriptPath(
+            AppendScriptInfo(
                 report,
                 component,
                 depth + 2
@@ -105,7 +106,7 @@ public static class AtlasSceneProbe
         }
     }
 
-    private static void AppendScriptPath(
+    private static void AppendScriptInfo(
     StringBuilder report,
     Component component,
     int depth)
@@ -127,6 +128,56 @@ public static class AtlasSceneProbe
         string indent = new(' ', depth * 2);
 
         report.AppendLine($"{indent}Script: {path}");
+
+        /*
+         * For normal scene inspection, Atlas only reads source
+         * that belongs to the developer's project.
+         *
+         * Package source can be inspected later through a
+         * dedicated tool if needed.
+         */
+        if (!path.StartsWith("Assets/"))
+        {
+            report.AppendLine(
+                $"{indent}Source: <Package Source Skipped>"
+            );
+
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            report.AppendLine(
+                $"{indent}Source: <Unavailable>"
+            );
+
+            return;
+        }
+
+        string absolutePath = Path.GetFullPath(path);
+
+        if (!File.Exists(absolutePath))
+        {
+            report.AppendLine(
+                $"{indent}Source: <File Not Found>"
+            );
+
+            return;
+        }
+
+        string source = File.ReadAllText(absolutePath);
+
+        report.AppendLine($"{indent}Source:");
+        report.AppendLine($"{indent}---");
+
+        foreach (string line in source.Split('\n'))
+        {
+            report.AppendLine(
+                $"{indent}{line.TrimEnd('\r')}"
+            );
+        }
+
+        report.AppendLine($"{indent}---");
     }
 
     private static string GetPropertyValue(
