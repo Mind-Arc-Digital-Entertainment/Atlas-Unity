@@ -78,6 +78,36 @@ public static class AtlasTools
   {
     return await unity.GetConsoleLogsAsync();
   }
+
+  [McpServerTool]
+  [Description(
+    "Searches project-owned C# scripts in the connected Unity project " +
+    "for a case-insensitive text query and returns matching files, lines, " +
+    "and source text."
+)]
+  public static async Task<string> SearchProject(
+    AtlasUnityClient unity,
+    [Description("The text to search for across project C# scripts.")]
+    string query)
+  {
+    return await unity.SearchProjectAsync(query);
+  }
+
+  [McpServerTool]
+  [Description(
+    "Reads the full source of a project-owned C# script " +
+    "from the connected Unity project."
+)]
+  public static async Task<string> ReadScript(
+    AtlasUnityClient unity,
+    [Description(
+        "Unity asset path of the C# script, for example " +
+        "Assets/Scripts/PlayerMovement.cs."
+    )]
+    string path)
+  {
+    return await unity.ReadScriptAsync(path);
+  }
 }
 
 
@@ -136,6 +166,28 @@ public sealed class AtlasUnityClient
   {
     return await SendRequestAsync(
         "/atlas/console"
+    );
+  }
+
+  public async Task<string> SearchProjectAsync(
+    string query)
+  {
+    string encodedQuery =
+        Uri.EscapeDataString(query);
+
+    return await SendRequestAsync(
+        $"/atlas/project/search?query={encodedQuery}"
+    );
+  }
+
+  public async Task<string> ReadScriptAsync(
+    string path)
+  {
+    string encodedPath =
+        Uri.EscapeDataString(path);
+
+    return await SendRequestAsync(
+        $"/atlas/project/script?path={encodedPath}"
     );
   }
 }

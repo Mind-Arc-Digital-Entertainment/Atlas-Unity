@@ -23,6 +23,12 @@ public static class AtlasLocalBridge
     static AtlasLocalBridge()
     {
         EditorApplication.update += ProcessMainThreadActions;
+        AssemblyReloadEvents.beforeAssemblyReload += StopBeforeAssemblyReload;
+    }
+
+    private static void StopBeforeAssemblyReload()
+    {
+        Stop();
     }
 
     [MenuItem("Atlas/Bridge/Start")]
@@ -66,8 +72,12 @@ public static class AtlasLocalBridge
 
         isRunning = false;
 
-        listener?.Stop();
+        TcpListener activeListener = listener;
         listener = null;
+
+        activeListener?.Stop();
+
+        serverThread = null;
 
         Debug.Log("Atlas Bridge stopped.");
     }
@@ -78,7 +88,15 @@ public static class AtlasLocalBridge
         {
             try
             {
-                TcpClient client = listener.AcceptTcpClient();
+                TcpListener activeListener = listener;
+
+                if (activeListener == null)
+                {
+                    break;
+                }
+
+                TcpClient client =
+                    activeListener.AcceptTcpClient();
 
                 HandleClient(client);
             }
@@ -91,9 +109,25 @@ public static class AtlasLocalBridge
                     );
                 }
             }
+            catch (ObjectDisposedException)
+            {
+                /*
+                 * Expected when the bridge is deliberately stopped
+                 * while AcceptTcpClient() is waiting.
+                 */
+                if (isRunning)
+                {
+                    Debug.LogWarning(
+                        "Atlas Bridge listener was disposed unexpectedly."
+                    );
+                }
+            }
             catch (Exception exception)
             {
-                Debug.LogException(exception);
+                if (isRunning)
+                {
+                    Debug.LogException(exception);
+                }
             }
         }
     }
@@ -165,6 +199,17 @@ public static class AtlasLocalBridge
                 path.StartsWith("/atlas/project/search?"))
             {
                 HandleSearchProject(
+                    stream,
+                    path
+                );
+
+                return;
+            }
+
+            if (method == "GET" &&
+                path.StartsWith("/atlas/project/script?"))
+            {
+                HandleReadScript(
                     stream,
                     path
                 );
@@ -628,6 +673,87 @@ public static class AtlasLocalBridge
                 stream,
                 500,
                 "{\"error\":\"Unity console inspection failed\"}"
+            );
+
+            return;
+        }
+
+        WriteResponse(
+            stream,
+            200,
+            json
+        );
+    }
+
+    private static void HandleReadScript(
+    NetworkStream stream,
+    string requestPath)
+    {
+        string assetPath =
+            GetQueryParameter(
+                requestPath,
+                "path"
+            );
+
+        if (string.IsNullOrWhiteSpace(assetPath))
+        {
+            WriteResponse(
+                stream,
+                400,
+                "{\"error\":\"Missing script path\"}"
+            );
+
+            return;
+        }
+
+        ManualResetEventSlim completed = new(false);
+
+        string json = null;
+        Exception error = null;
+
+        MainThreadActions.Enqueue(() =>
+        {
+            try
+            {
+                AtlasScriptReadResult result =
+                    AtlasProjectTools.ReadScript(
+                        assetPath
+                    );
+
+                json = JsonUtility.ToJson(
+                    result
+                );
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+            finally
+            {
+                completed.Set();
+            }
+        });
+
+        if (!completed.Wait(
+                TimeSpan.FromSeconds(5)))
+        {
+            WriteResponse(
+                stream,
+                503,
+                "{\"error\":\"Unity Editor did not respond in time\"}"
+            );
+
+            return;
+        }
+
+        if (error != null)
+        {
+            Debug.LogException(error);
+
+            WriteResponse(
+                stream,
+                500,
+                "{\"error\":\"Unity script read failed\"}"
             );
 
             return;
