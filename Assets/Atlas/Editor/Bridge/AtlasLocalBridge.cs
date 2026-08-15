@@ -155,6 +155,31 @@ public static class AtlasLocalBridge
             }
 
             if (method == "GET" &&
+                path == "/atlas/console")
+            {
+                HandleGetConsoleLogs(stream);
+                return;
+            }
+
+            if (method == "GET" &&
+                path.StartsWith("/atlas/object?"))
+            {
+                HandleInspectGameObject(
+                    stream,
+                    path
+                );
+
+                return;
+            }
+
+            if (method == "GET" &&
+                path == "/atlas/scene/objects")
+            {
+                HandleListSceneObjects(stream);
+                return;
+            }
+
+            if (method == "GET" &&
                 path.StartsWith("/atlas/object?"))
             {
                 HandleInspectGameObject(
@@ -478,5 +503,66 @@ public static class AtlasLocalBridge
         {
             action?.Invoke();
         }
+    }
+
+    private static void HandleGetConsoleLogs(
+    NetworkStream stream)
+    {
+        ManualResetEventSlim completed = new(false);
+
+        string json = null;
+        Exception error = null;
+
+        MainThreadActions.Enqueue(() =>
+        {
+            try
+            {
+                AtlasConsoleInfo console =
+                    AtlasConsoleTools.GetConsoleLogs();
+
+                json = JsonUtility.ToJson(
+                    console
+                );
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+            finally
+            {
+                completed.Set();
+            }
+        });
+
+        if (!completed.Wait(
+                TimeSpan.FromSeconds(5)))
+        {
+            WriteResponse(
+                stream,
+                503,
+                "{\"error\":\"Unity Editor did not respond in time\"}"
+            );
+
+            return;
+        }
+
+        if (error != null)
+        {
+            Debug.LogException(error);
+
+            WriteResponse(
+                stream,
+                500,
+                "{\"error\":\"Unity console inspection failed\"}"
+            );
+
+            return;
+        }
+
+        WriteResponse(
+            stream,
+            200,
+            json
+        );
     }
 }

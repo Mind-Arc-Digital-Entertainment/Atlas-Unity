@@ -44,6 +44,40 @@ public static class AtlasTools
   {
     return await unity.GetActiveSceneAsync();
   }
+
+  [McpServerTool]
+  [Description(
+      "Returns the names of all GameObjects in the active Unity scene."
+  )]
+  public static async Task<string> ListSceneObjects(
+      AtlasUnityClient unity)
+  {
+    return await unity.ListSceneObjectsAsync();
+  }
+
+  [McpServerTool]
+  [Description(
+      "Inspects a GameObject in the active Unity scene by name and " +
+      "returns its components, serialized properties, and script metadata."
+  )]
+  public static async Task<string> InspectGameObject(
+      AtlasUnityClient unity,
+      [Description("The exact or case-insensitive name of the GameObject to inspect.")]
+        string objectName)
+  {
+    return await unity.InspectGameObjectAsync(objectName);
+  }
+
+  [McpServerTool]
+  [Description(
+    "Returns the current entries from the connected Unity Editor Console, " +
+    "including log type, message, source file, and line number."
+)]
+  public static async Task<string> GetConsoleLogs(
+    AtlasUnityClient unity)
+  {
+    return await unity.GetConsoleLogsAsync();
+  }
 }
 
 
@@ -58,10 +92,36 @@ public sealed class AtlasUnityClient
 
   public async Task<string> GetActiveSceneAsync()
   {
+    return await SendRequestAsync(
+        "/atlas/scene"
+    );
+  }
+
+  public async Task<string> ListSceneObjectsAsync()
+  {
+    return await SendRequestAsync(
+        "/atlas/scene/objects"
+    );
+  }
+
+  public async Task<string> InspectGameObjectAsync(
+      string objectName)
+  {
+    string encodedName =
+        Uri.EscapeDataString(objectName);
+
+    return await SendRequestAsync(
+        $"/atlas/object?name={encodedName}"
+    );
+  }
+
+  private async Task<string> SendRequestAsync(
+      string path)
+  {
     try
     {
       return await httpClient.GetStringAsync(
-          "/atlas/scene"
+          path
       );
     }
     catch (HttpRequestException)
@@ -70,5 +130,12 @@ public sealed class AtlasUnityClient
           "{\"error\":\"Atlas could not connect to Unity. " +
           "Make sure the Atlas Bridge is running.\"}";
     }
+  }
+
+  public async Task<string> GetConsoleLogsAsync()
+  {
+    return await SendRequestAsync(
+        "/atlas/console"
+    );
   }
 }
