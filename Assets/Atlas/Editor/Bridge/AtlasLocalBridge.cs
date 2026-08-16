@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading;
 using UnityEditor;
 using UnityEngine;
+using System.Collections.Generic;
 
 [InitializeOnLoad]
 public static class AtlasLocalBridge
@@ -31,6 +32,65 @@ public static class AtlasLocalBridge
     private static void StopBeforeAssemblyReload()
     {
         Stop();
+    }
+
+    [Serializable]
+    private class AtlasObjectResponseEnvelope
+    {
+        public bool Found;
+        public bool Ambiguous;
+        public int MatchCount;
+        public string LookupKind;
+
+        public List<AtlasSceneObjectReference>
+            Matches = new();
+    }
+
+    private static string SerializeObjectResponse(
+    AtlasObjectResponse response)
+    {
+        if (response == null)
+        {
+            throw new ArgumentNullException(
+                nameof(response)
+            );
+        }
+
+        AtlasObjectResponseEnvelope envelope = new()
+        {
+            Found = response.Found,
+            Ambiguous = response.Ambiguous,
+            MatchCount = response.MatchCount,
+            LookupKind = response.LookupKind,
+            Matches = response.Matches
+                ?? new List<AtlasSceneObjectReference>()
+        };
+
+        string envelopeJson =
+            JsonUtility.ToJson(envelope);
+
+        if (string.IsNullOrEmpty(envelopeJson) ||
+            envelopeJson[envelopeJson.Length - 1] != '}')
+        {
+            throw new InvalidOperationException(
+                "Atlas could not serialize the object response envelope."
+            );
+        }
+
+        string objectJson =
+            response.Object == null
+                ? "null"
+                : JsonUtility.ToJson(
+                    response.Object
+                );
+
+        return envelopeJson.Substring(
+                   0,
+                   envelopeJson.Length - 1
+               ) +
+               ",\"Object\":" +
+               objectJson +
+               "}";
     }
 
     [MenuItem("Atlas/Bridge/Start")]
@@ -227,7 +287,8 @@ public static class AtlasLocalBridge
             }
 
             if (method == "GET" &&
-                path.StartsWith("/atlas/object?"))
+                (path == "/atlas/object" ||
+                 path.StartsWith("/atlas/object?")))
             {
                 HandleInspectGameObject(
                     stream,
@@ -305,22 +366,75 @@ public static class AtlasLocalBridge
     }
 
     private static void HandleInspectGameObject(
-    NetworkStream stream,
-    string requestPath)
+        NetworkStream stream,
+        string requestPath)
     {
+        string globalObjectId =
+            GetQueryParameter(
+                requestPath,
+                "id"
+            );
+
+        string scenePath =
+            GetQueryParameter(
+                requestPath,
+                "scene"
+            );
+
+        string hierarchyPath =
+            GetQueryParameter(
+                requestPath,
+                "path"
+            );
+
         string objectName =
             GetQueryParameter(
                 requestPath,
                 "name"
             );
 
-        if (string.IsNullOrWhiteSpace(
-                objectName))
+        bool hasId =
+            !string.IsNullOrWhiteSpace(
+                globalObjectId
+            );
+
+        bool hasName =
+            !string.IsNullOrWhiteSpace(
+                objectName
+            );
+
+        bool hasScene =
+            !string.IsNullOrWhiteSpace(
+                scenePath
+            );
+
+        bool hasPath =
+            !string.IsNullOrWhiteSpace(
+                hierarchyPath
+            );
+
+        if (hasScene != hasPath)
         {
             WriteResponse(
                 stream,
                 400,
-                "{\"error\":\"Missing object name\"}"
+                "{\"error\":\"Scene and path must be provided together\"}"
+            );
+
+            return;
+        }
+
+        int selectorCount =
+            (hasId ? 1 : 0) +
+            (hasName ? 1 : 0) +
+            (hasScene && hasPath ? 1 : 0);
+
+        if (selectorCount != 1)
+        {
+            WriteResponse(
+                stream,
+                400,
+                "{\"error\":\"Exactly one object selector is required: id, scene and path, or name\"}"
             );
 
             return;
@@ -335,18 +449,35 @@ public static class AtlasLocalBridge
         {
             try
             {
-                AtlasGameObjectInfo gameObject =
-                    AtlasSceneTools.InspectGameObject(
-                        objectName
-                    );
+                AtlasObjectResponse response;
 
-                AtlasObjectResponse response = new()
+                if (hasId)
                 {
-                    Found = gameObject != null,
-                    Object = gameObject
-                };
+                    response =
+                        AtlasSceneTools
+                            .InspectGameObjectByGlobalObjectId(
+                                globalObjectId
+                            );
+                }
+                else if (hasScene)
+                {
+                    response =
+                        AtlasSceneTools
+                            .InspectGameObjectByPath(
+                                scenePath,
+                                hierarchyPath
+                            );
+                }
+                else
+                {
+                    response =
+                        AtlasSceneTools
+                            .InspectGameObjectByName(
+                                objectName
+                            );
+                }
 
-                json = JsonUtility.ToJson(
+                json = SerializeObjectResponse(
                     response
                 );
             }
@@ -374,6 +505,8 @@ public static class AtlasLocalBridge
 
         if (error != null)
         {
+            Debug.LogException(error);
+
             WriteResponse(
                 stream,
                 500,
@@ -830,4 +963,5 @@ public static class AtlasLocalBridge
             json
         );
     }
+
 }

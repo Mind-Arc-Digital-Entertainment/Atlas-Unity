@@ -57,15 +57,36 @@ public static class AtlasTools
 
   [McpServerTool]
   [Description(
-      "Inspects a GameObject in the active Unity scene by name and " +
-      "returns its components, serialized properties, and script metadata."
+      "Inspects exactly one GameObject in the active Unity scene. " +
+      "Use one selector form only: objectName, globalObjectId, " +
+      "or scenePath together with hierarchyPath. " +
+      "Name lookup is case-insensitive and may report ambiguity."
   )]
   public static async Task<string> InspectGameObject(
       AtlasUnityClient unity,
-      [Description("The exact or case-insensitive name of the GameObject to inspect.")]
-        string objectName)
+      [Description(
+        "Convenience GameObject name lookup. Case-insensitive and may be ambiguous."
+    )]
+    string? objectName = null,
+      [Description(
+        "Exact Unity GlobalObjectId for stable scene-object lookup."
+    )]
+    string? globalObjectId = null,
+      [Description(
+        "Unity scene asset path. Must be supplied together with hierarchyPath."
+    )]
+    string? scenePath = null,
+      [Description(
+        "Canonical Atlas hierarchy path. Must be supplied together with scenePath."
+    )]
+    string? hierarchyPath = null)
   {
-    return await unity.InspectGameObjectAsync(objectName);
+    return await unity.InspectGameObjectAsync(
+        objectName,
+        globalObjectId,
+        scenePath,
+        hierarchyPath
+    );
   }
 
   [McpServerTool]
@@ -145,10 +166,66 @@ public sealed class AtlasUnityClient
   }
 
   public async Task<string> InspectGameObjectAsync(
-      string objectName)
+      string? objectName = null,
+      string? globalObjectId = null,
+      string? scenePath = null,
+      string? hierarchyPath = null)
   {
+    bool hasName =
+        !string.IsNullOrWhiteSpace(objectName);
+
+    bool hasId =
+        !string.IsNullOrWhiteSpace(globalObjectId);
+
+    bool hasScene =
+        !string.IsNullOrWhiteSpace(scenePath);
+
+    bool hasPath =
+        !string.IsNullOrWhiteSpace(hierarchyPath);
+
+    if (hasScene != hasPath)
+    {
+      return
+          "{\"error\":\"Scene and hierarchyPath must be provided together\"}";
+    }
+
+    int selectorCount =
+        (hasName ? 1 : 0) +
+        (hasId ? 1 : 0) +
+        (hasScene && hasPath ? 1 : 0);
+
+    if (selectorCount != 1)
+    {
+      return
+          "{\"error\":\"Exactly one object selector is required: " +
+          "objectName, globalObjectId, or scenePath and hierarchyPath\"}";
+    }
+
+    if (hasId)
+    {
+      string encodedId =
+          Uri.EscapeDataString(globalObjectId!);
+
+      return await SendRequestAsync(
+          $"/atlas/object?id={encodedId}"
+      );
+    }
+
+    if (hasScene)
+    {
+      string encodedScene =
+          Uri.EscapeDataString(scenePath!);
+
+      string encodedPath =
+          Uri.EscapeDataString(hierarchyPath!);
+
+      return await SendRequestAsync(
+          $"/atlas/object?scene={encodedScene}&path={encodedPath}"
+      );
+    }
+
     string encodedName =
-        Uri.EscapeDataString(objectName);
+        Uri.EscapeDataString(objectName!);
 
     return await SendRequestAsync(
         $"/atlas/object?name={encodedName}"

@@ -5,7 +5,7 @@ using UnityEngine;
 
 public static class AtlasHealthTools
 {
-    public const string ProtocolVersion = "1.1";
+    public const string ProtocolVersion = "1.2";
 
     public static AtlasHealthInfo GetHealth()
     {
