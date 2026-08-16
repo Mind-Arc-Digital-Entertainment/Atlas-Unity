@@ -4,4 +4,7 @@ using System.Collections.Generic;
 public class AtlasSceneObjectList
 {
     public List<string> Objects = new();
+
+    public List<AtlasSceneObjectReference>
+        ObjectReferences = new();
 }

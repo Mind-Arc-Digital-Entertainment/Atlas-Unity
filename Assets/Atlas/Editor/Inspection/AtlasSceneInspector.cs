@@ -1,6 +1,7 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using System.Collections.Generic;
 using UnityEngine.SceneManagement;
 
 public static class AtlasSceneInspector
@@ -25,12 +26,20 @@ public static class AtlasSceneInspector
         return sceneInfo;
     }
 
-    private static AtlasGameObjectInfo InspectGameObject(
-        GameObject gameObject)
+    private static AtlasGameObjectInfo InspectGameObject(GameObject gameObject)
     {
         AtlasGameObjectInfo objectInfo = new()
         {
-            Name = gameObject.name
+            Name = gameObject.name,
+
+            GlobalObjectId =
+                GetGlobalObjectId(gameObject),
+
+            HierarchyPath =
+                GetHierarchyPath(gameObject.transform),
+
+            ScenePath =
+                gameObject.scene.path ?? string.Empty
         };
 
         foreach (Component component
@@ -53,6 +62,78 @@ public static class AtlasSceneInspector
         }
 
         return objectInfo;
+    }
+
+    private static string GetGlobalObjectId(
+    GameObject gameObject)
+    {
+        if (gameObject == null)
+        {
+            return string.Empty;
+        }
+
+        if (!gameObject.scene.IsValid() ||
+            string.IsNullOrWhiteSpace(
+                gameObject.scene.path))
+        {
+            return string.Empty;
+        }
+
+        GlobalObjectId globalObjectId =
+            GlobalObjectId.GetGlobalObjectIdSlow(
+                gameObject
+            );
+
+        if ((int)globalObjectId.identifierType == 0)
+        {
+            return string.Empty;
+        }
+
+        return globalObjectId.ToString();
+    }
+
+    private static string GetHierarchyPath(
+        Transform transform)
+    {
+        if (transform == null)
+        {
+            return string.Empty;
+        }
+
+        List<string> segments = new();
+
+        Transform current = transform;
+
+        while (current != null)
+        {
+            segments.Add(
+                EncodeHierarchyName(current.name) +
+                "[" +
+                current.GetSiblingIndex() +
+                "]"
+            );
+
+            current = current.parent;
+        }
+
+        segments.Reverse();
+
+        return "/" + string.Join("/", segments);
+    }
+
+    private static string EncodeHierarchyName(
+        string objectName)
+    {
+        if (string.IsNullOrEmpty(objectName))
+        {
+            return string.Empty;
+        }
+
+        return objectName
+            .Replace("%", "%25")
+            .Replace("/", "%2F")
+            .Replace("[", "%5B")
+            .Replace("]", "%5D");
     }
 
     private static AtlasComponentInfo InspectComponent(

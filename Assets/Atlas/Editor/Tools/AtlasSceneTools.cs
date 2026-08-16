@@ -23,18 +23,26 @@ public static class AtlasSceneTools
     /// </summary>
     public static List<string> ListSceneObjects()
     {
+        return GetSceneObjectList().Objects;
+    }
+
+    public static AtlasSceneObjectList GetSceneObjectList()
+    {
         AtlasSceneInfo scene =
             AtlasSceneInspector.InspectActiveScene();
 
-        List<string> objects = new();
+        AtlasSceneObjectList result = new();
 
         foreach (AtlasGameObjectInfo rootObject
                  in scene.RootObjects)
         {
-            AddObjectNames(rootObject, objects);
+            AddSceneObject(
+                rootObject,
+                result
+            );
         }
 
-        return objects;
+        return result;
     }
 
     /// <summary>
@@ -66,16 +74,29 @@ public static class AtlasSceneTools
         return null;
     }
 
-    private static void AddObjectNames(
-        AtlasGameObjectInfo gameObject,
-        List<string> objects)
+    private static void AddSceneObject(
+       AtlasGameObjectInfo gameObject,
+       AtlasSceneObjectList result)
     {
-        objects.Add(gameObject.Name);
+        result.Objects.Add(gameObject.Name);
+
+        result.ObjectReferences.Add(
+            new AtlasSceneObjectReference
+            {
+                Name = gameObject.Name,
+                GlobalObjectId = gameObject.GlobalObjectId,
+                HierarchyPath = gameObject.HierarchyPath,
+                ScenePath = gameObject.ScenePath
+            }
+        );
 
         foreach (AtlasGameObjectInfo child
                  in gameObject.Children)
         {
-            AddObjectNames(child, objects);
+            AddSceneObject(
+                child,
+                result
+            );
         }
     }
 

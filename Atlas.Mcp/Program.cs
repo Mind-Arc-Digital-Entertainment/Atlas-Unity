@@ -108,6 +108,16 @@ public static class AtlasTools
   {
     return await unity.ReadScriptAsync(path);
   }
+
+  [McpServerTool]
+  [Description(
+    "Returns Atlas bridge health and capability information from the connected Unity project."
+)]
+  public static async Task<string> GetHealth(
+    AtlasUnityClient unity)
+  {
+    return await unity.GetHealthAsync();
+  }
 }
 
 
@@ -188,6 +198,13 @@ public sealed class AtlasUnityClient
 
     return await SendRequestAsync(
         $"/atlas/project/script?path={encodedPath}"
+    );
+  }
+
+  public async Task<string> GetHealthAsync()
+  {
+    return await SendRequestAsync(
+        "/atlas/health"
     );
   }
 }

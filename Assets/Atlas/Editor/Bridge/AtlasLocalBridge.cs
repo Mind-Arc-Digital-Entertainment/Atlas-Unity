@@ -20,6 +20,8 @@ public static class AtlasLocalBridge
     private static Thread serverThread;
     private static bool isRunning;
 
+    public static bool IsRunning => isRunning;
+
     static AtlasLocalBridge()
     {
         EditorApplication.update += ProcessMainThreadActions;
@@ -175,9 +177,16 @@ public static class AtlasLocalBridge
             }
 
             if (method == "GET" &&
-    path == "/atlas/scene")
+                path == "/atlas/scene")
             {
                 HandleGetActiveScene(stream);
+                return;
+            }
+
+            if (method == "GET" &&
+                path == "/atlas/health")
+            {
+                HandleGetHealth(stream);
                 return;
             }
 
@@ -248,11 +257,8 @@ public static class AtlasLocalBridge
         {
             try
             {
-                AtlasSceneObjectList response = new()
-                {
-                    Objects =
-                        AtlasSceneTools.ListSceneObjects()
-                };
+                AtlasSceneObjectList response =
+                    AtlasSceneTools.GetSceneObjectList();
 
                 json = JsonUtility.ToJson(
                     response
@@ -754,6 +760,65 @@ public static class AtlasLocalBridge
                 stream,
                 500,
                 "{\"error\":\"Unity script read failed\"}"
+            );
+
+            return;
+        }
+
+        WriteResponse(
+            stream,
+            200,
+            json
+        );
+    }
+
+    private static void HandleGetHealth(
+    NetworkStream stream)
+    {
+        ManualResetEventSlim completed = new(false);
+
+        string json = null;
+        Exception error = null;
+
+        MainThreadActions.Enqueue(() =>
+        {
+            try
+            {
+                AtlasHealthInfo health =
+                    AtlasHealthTools.GetHealth();
+
+                json = JsonUtility.ToJson(health);
+            }
+            catch (Exception exception)
+            {
+                error = exception;
+            }
+            finally
+            {
+                completed.Set();
+            }
+        });
+
+        if (!completed.Wait(
+                TimeSpan.FromSeconds(5)))
+        {
+            WriteResponse(
+                stream,
+                503,
+                "{\"error\":\"Unity Editor did not respond in time\"}"
+            );
+
+            return;
+        }
+
+        if (error != null)
+        {
+            Debug.LogException(error);
+
+            WriteResponse(
+                stream,
+                500,
+                "{\"error\":\"Atlas health collection failed\"}"
             );
 
             return;
