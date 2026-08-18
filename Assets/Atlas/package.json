@@ -1,0 +1,10 @@
+{
+  "name": "com.mindarc.atlas",
+  "version": "0.1.0",
+  "displayName": "Atlas Unity",
+  "description": "Unity Editor bridge and diagnostic tooling for Atlas.",
+  "unity": "6000.0",
+  "author": {
+    "name": "Mind Arc Digital Entertainment"
+  }
+}
